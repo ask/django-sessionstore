@@ -11,9 +11,10 @@ class SessionDB(SessionBase):
 
     model = CurrentSession
 
-    def __init__(self, session_key=None, model=None):
+    def __init__(self, session_key=None, model=None, create_if_missing=True):
         self.model = model or self.model
         self.DoesNotExist = self.model.DoesNotExist
+        self.create_if_missing = create_if_missing
         super(SessionDB, self).__init__(session_key=session_key)
 
     def load(self):
@@ -21,7 +22,8 @@ class SessionDB(SessionBase):
         try:
             s = self.get(self.session_key, expire_date__gt=now)
         except (self.DoesNotExist, SuspiciousOperation):
-            self.create()
+            if self.create_if_missing:
+                self.create()
             return {}
 
     def get(self, session_key, **lookup):
@@ -88,7 +90,22 @@ class SessionStore(SessionBase):
     def __init__(self, session_key=None):
         super(SessionStore, self).__init__(session_key=session_key)
         self.current = SessionDB(self.session_key, model=CurrentSession)
-        self.previous = SessionDB(self.session_key, model=PrevSession)
+        self.previous = SessionDB(self.session_key, model=PrevSession,
+                                  create_if_missing=False)
+
+    def _sync_with_other_session(self, session):
+        self.session_key = other.session_key
+        self.modified = other.modified
+        self.accessed = other.accessed
+
+        # Sync with the other session cache (if any
+        if hasattr(other, "_session_cache"):
+            self._session_cache = other._session_cache
+        else:
+            try:
+                delattr(self, "_session_cache")
+            except AttributeError:
+                pass
 
     def load(self):
         current_session = self.current.load()
@@ -96,18 +113,24 @@ class SessionStore(SessionBase):
             prev_session = self.previous.load()
             if prev_session:
                 self.current.init_with_other(prev_session, must_create=True)
+            self._sync_with_other_session(self.current)
             return prev_session
+        self._sync_with_other_session(self.current)
         return current_session
 
     def save(self):
-        return self.current.save()
+        s = self.current.save()
+        self._sync_with_other_session(self.current)
 
     def exists(self, session_key):
-        return self.current.exists(session_key)
+        return self.current.exists(session_key) or \
+                    self.previous.exists(session_key)
 
     def create(self):
-        return self.current.create()
+        s = self.current.create()
+        self._sync_with_other_session(self.current)
 
     def delete(self):
         self.previous.delete()
         self.current.delete()
+        self._sync_with_other_session(self.current)
