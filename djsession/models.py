@@ -2,6 +2,7 @@ from django.db import models
 from django.utils.translation import ugettext_lazy as _
 from django.contrib.sessions.models import Session
 from djsession.managers import TableversionManager
+from django.db.models import signals
 
 
 class Tableversion(models.Model):
@@ -27,13 +28,75 @@ class PrevSession(Session):
 
     class Meta:
         proxy = True
-PrevSession._meta.db_table = Tableversion.objects.get_previous_table_name(
-        PrevSession._meta.db_table)
+
+    def __init__(self, *args, **kwargs):
+        super(PrevSession, self).__init__(*args, **kwargs)
+        self.__class__._meta.db_table = \
+                Tableversion.objects.get_previous_table_name(
+                        self.__class__._meta.db_table)
+try:
+    PrevSession._meta.db_table = \
+            Tableversion.objects.get_previous_table_name(
+                    PrevSession._meta.db_table)
+except Exception:
+    pass # XXX (tableversion table not created yet)
 
 
 class CurrentSession(Session):
-
+    
     class Meta:
         proxy = True
-CurrentSession._meta.db_table = Tableversion.objects.get_current_table_name(
-        CurrentSession._meta.db_table)
+
+    def __init__(self, *args, **kwargs):
+        super(CurrentSession, self).__init__(*args, **kwargs)
+        self.__class__._meta.db_table = \
+                Tableversion.objects.get_current_table_name(
+                        self.__class__._meta.db_table)
+try:
+    CurrentSession._meta.db_table = \
+            Tableversion.objects.get_current_table_name(
+                    CurrentSession._meta.db_table)
+except Exception:
+    pass # XXX (tableversion table not created yet)
+
+
+def force_create_table(model, verbosity=0):
+    """Force creation of proxy table.
+
+    **NOTE** Does not create references.
+
+    """
+    from django.core.management.color import no_style
+    from django.db import connection
+    tables = connection.introspection.table_names()
+    abs_name = connection.introspection.table_name_converter(
+                    model._meta.db_table)
+    if abs_name in tables:
+        return False
+    old_proxy = model._meta.proxy
+    old_local_fields = model._meta.local_fields
+    model._meta.proxy = False
+    model._meta.local_fields = model._meta.local_fields + model._meta.fields
+    sql, references = connection.creation.sql_create_model(model, no_style())
+    model._meta.proxy = old_proxy
+    model._meta.local_fields = old_local_fields
+    cursor = connection.cursor()
+    map(cursor.execute, sql)
+    if verbosity >= 1 and sql:
+        print("Creating table: %s" % model._meta.db_table)
+    return True
+
+def on_post_syncdb(app, created_models, verbosity=2, **kwargs):
+    if app.__name__ != __name__:
+        return
+    # Tableversions table is now created.
+    PrevSession._meta.db_table = \
+            Tableversion.objects.get_previous_table_name(
+                    PrevSession._meta.db_table)
+    CurrentSession._meta.db_table = \
+            Tableversion.objects.get_current_table_name(
+                    CurrentSession._meta.db_table)
+    force_create_table(PrevSession, verbosity=verbosity)
+    force_create_table(CurrentSession, verbosity=verbosity)
+
+signals.post_syncdb.connect(on_post_syncdb)
