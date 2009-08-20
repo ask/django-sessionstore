@@ -3,6 +3,17 @@ from django.utils.translation import ugettext_lazy as _
 from django.contrib.sessions.models import Session
 from djsession.managers import TableversionManager
 from django.db.models import signals
+from django.core.management.color import no_style
+from django.db import connection
+
+
+def table_created(model):
+    tables = connection.introspection.table_names()
+    abs_name = connection.introspection.table_name_converter(
+            model._meta.db_table)
+    if abs_name in tables:
+        return True
+    return False
 
 
 class Tableversion(models.Model):
@@ -34,12 +45,10 @@ class PrevSession(Session):
         self.__class__._meta.db_table = \
                 Tableversion.objects.get_previous_table_name(
                         self.__class__._meta.db_table)
-try:
+if table_created(Tableversion):
     PrevSession._meta.db_table = \
             Tableversion.objects.get_previous_table_name(
                     PrevSession._meta.db_table)
-except Exception:
-    pass # XXX (tableversion table not created yet)
 
 
 class CurrentSession(Session):
@@ -52,12 +61,10 @@ class CurrentSession(Session):
         self.__class__._meta.db_table = \
                 Tableversion.objects.get_current_table_name(
                         self.__class__._meta.db_table)
-try:
+if table_created(Tableversion):
     CurrentSession._meta.db_table = \
             Tableversion.objects.get_current_table_name(
                     CurrentSession._meta.db_table)
-except Exception:
-    pass # XXX (tableversion table not created yet)
 
 
 def force_create_table(model, verbosity=0):
@@ -66,12 +73,7 @@ def force_create_table(model, verbosity=0):
     **NOTE** Does not create references.
 
     """
-    from django.core.management.color import no_style
-    from django.db import connection
-    tables = connection.introspection.table_names()
-    abs_name = connection.introspection.table_name_converter(
-                    model._meta.db_table)
-    if abs_name in tables:
+    if table_created(model):
         return False
     old_proxy = model._meta.proxy
     old_local_fields = model._meta.local_fields
@@ -98,5 +100,5 @@ def on_post_syncdb(app, created_models, verbosity=2, **kwargs):
                     CurrentSession._meta.db_table)
     force_create_table(PrevSession, verbosity=verbosity)
     force_create_table(CurrentSession, verbosity=verbosity)
-
 signals.post_syncdb.connect(on_post_syncdb)
+
