@@ -1,96 +1,62 @@
 from django.db import models
 from django.utils.translation import ugettext_lazy as _
-from django.contrib.sessions.models import Session
+from django.contrib.sessions.models import SessionManager
 from djsession.managers import TableversionManager
 from django.db.models import signals
 from django.core.management.color import no_style
 from django.db import connection
 
-PREVIOUS_TABLE_NAME="django_session_0"
-CURRENT_TABLE_NAME="django_session_1"
-
-def table_created(model):
-    tables = connection.introspection.table_names()
-    abs_name = connection.introspection.table_name_converter(
-            model._meta.db_table)
-    if abs_name in tables:
-        return True
-    return False
-
-
 class Tableversion(models.Model):
-    table = models.CharField(_(u"table"), max_length=255, unique=True)
-    version = models.IntegerField(_(u"version"), default=1)
-
-    objects = TableversionManager()
+    current_version = models.IntegerField(_(u"version"), default=1)
 
     class Meta:
         verbose_name = _("table version")
         verbose_name_plural = _(u"table versions")
 
     def __unicode__(self):
-        return self.db_table
+        return "django_session_%d" % self.current_version
 
-    @property
-    def db_table(self):
-        version = "_v" + str(self.version) if self.version > 0 else str()
-        return "%s%s" % (self.table, version)
+def version_table_created():
+    """Tell if the TableVersion is available or need to be created"""
+    tables = connection.introspection.table_names()
+    abs_name = connection.introspection.table_name_converter(
+            Tableversion._meta.db_table)
+    if abs_name in tables:
+        return True
+    return False
 
+if version_table_created():
+    try:
+        # try to get the latest version number
+        current_version = Tableversion.objects.order_by('-current_version')[0]
+    except IndexError:
+        current_version = 1
+else:
+    current_version = 1
+
+PREVIOUS_TABLE_NAME="django_session_%d" % int(current_version -1)
+CURRENT_TABLE_NAME="django_session_%d" % current_version
+
+class Session(models.Model):
+    """Replication of the session Model"""
+    session_key = models.CharField(_('session key'), max_length=40,
+                                   primary_key=True)
+    session_data = models.TextField(_('session data'))
+    expire_date = models.DateTimeField(_('expire date'))
+    # we inherit the session manager... No sure it's
+    # a good idea to rely on this code.
+    objects = SessionManager()
+
+    class Meta:
+        abstract = True
 
 class PrevSession(Session):
 
     class Meta:
-        proxy = True
         db_table = PREVIOUS_TABLE_NAME
-
-    def __init__(self, *args, **kwargs):
-        super(PrevSession, self).__init__(*args, **kwargs)
-        self.__class__._meta.db_table = PREVIOUS_TABLE_NAME
-
-PrevSession._meta.db_table = PREVIOUS_TABLE_NAME
-
 
 class CurrentSession(Session):
     
     class Meta:
-        proxy = True
         db_table = CURRENT_TABLE_NAME
-
-    def __init__(self, *args, **kwargs):
-        super(CurrentSession, self).__init__(*args, **kwargs)
-        self.__class__._meta.db_table = CURRENT_TABLE_NAME
-
-CurrentSession._meta.db_table = CURRENT_TABLE_NAME
-
-
-def force_create_table(model, verbosity=0):
-    """Force creation of proxy table.
-
-    **NOTE** Does not create references.
-
-    """
-    if table_created(model):
-        return False
-    old_proxy = model._meta.proxy
-    old_local_fields = model._meta.local_fields
-    model._meta.proxy = False
-    model._meta.local_fields = model._meta.local_fields + model._meta.fields
-    sql, references = connection.creation.sql_create_model(model, no_style())
-    model._meta.proxy = old_proxy
-    model._meta.local_fields = old_local_fields
-    cursor = connection.cursor()
-    map(cursor.execute, sql)
-    if verbosity >= 1 and sql:
-        print("Creating table: %s" % model._meta.db_table)
-    return True
-
-def on_post_syncdb(app, created_models, verbosity=2, **kwargs):
-    if app.__name__ != __name__:
-        return
-    # Tableversions table is now created.
-    PrevSession._meta.db_table = PREVIOUS_TABLE_NAME
-    CurrentSession._meta.db_table = CURRENT_TABLE_NAME
-    force_create_table(PrevSession, verbosity=verbosity)
-    force_create_table(CurrentSession, verbosity=verbosity)
-signals.post_syncdb.connect(on_post_syncdb)
 

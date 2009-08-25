@@ -5,7 +5,6 @@ from django.contrib.sessions.backends.base import SessionBase
 from djsession.backends.db import SessionStore as DBStore
 from django.core.cache import cache
 
-
 class SessionStore(DBStore):
 
     def load(self):
