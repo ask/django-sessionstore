@@ -21,7 +21,6 @@ class SessionStore(DBStore):
 
     def load(self):
         try:
-            print self.model
             s = self.model.objects.get(session_key=self.session_key)
             return self.decode(force_unicode(s.session_data))
         except (self.DoesNotExist, SuspiciousOperation):

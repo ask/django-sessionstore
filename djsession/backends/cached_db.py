@@ -1,11 +1,10 @@
-"""Session backend that first tries the cache, then tries the tablerotated
-database backend."""
+"""Session backend that first tries the cache, then tries the table
+rotated database backend."""
 from django.conf import settings
-from django.contrib.sessions.backends.base import SessionBase
-from djsession.backends.db import SessionStore as DBStore
+from djsession.backends.db import SessionStore as DB
 from django.core.cache import cache
 
-class SessionStore(DBStore):
+class SessionStore(DB):
 
     def load(self):
         session_data = cache.get(self.session_key, None)
@@ -13,6 +12,7 @@ class SessionStore(DBStore):
             session_data = super(SessionStore, self).load()
             cache.set(self.session_key, session_data,
                       settings.SESSION_COOKIE_AGE)
+        return session_data
 
     def save(self, must_create=False):
         super(SessionStore, self).save(must_create)
