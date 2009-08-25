@@ -6,6 +6,8 @@ from django.db.models import signals
 from django.core.management.color import no_style
 from django.db import connection
 
+PREVIOUS_TABLE_NAME="django_session_0"
+CURRENT_TABLE_NAME="django_session_1"
 
 def table_created(model):
     tables = connection.introspection.table_names()
@@ -18,7 +20,7 @@ def table_created(model):
 
 class Tableversion(models.Model):
     table = models.CharField(_(u"table"), max_length=255, unique=True)
-    version = models.IntegerField(_(u"version"), default=0)
+    version = models.IntegerField(_(u"version"), default=1)
 
     objects = TableversionManager()
 
@@ -39,32 +41,26 @@ class PrevSession(Session):
 
     class Meta:
         proxy = True
+        db_table = PREVIOUS_TABLE_NAME
 
     def __init__(self, *args, **kwargs):
         super(PrevSession, self).__init__(*args, **kwargs)
-        self.__class__._meta.db_table = \
-                Tableversion.objects.get_previous_table_name(
-                        self.__class__._meta.db_table)
-if table_created(Tableversion):
-    PrevSession._meta.db_table = \
-            Tableversion.objects.get_previous_table_name(
-                    PrevSession._meta.db_table)
+        self.__class__._meta.db_table = PREVIOUS_TABLE_NAME
+
+PrevSession._meta.db_table = PREVIOUS_TABLE_NAME
 
 
 class CurrentSession(Session):
     
     class Meta:
         proxy = True
+        db_table = CURRENT_TABLE_NAME
 
     def __init__(self, *args, **kwargs):
         super(CurrentSession, self).__init__(*args, **kwargs)
-        self.__class__._meta.db_table = \
-                Tableversion.objects.get_current_table_name(
-                        self.__class__._meta.db_table)
-if table_created(Tableversion):
-    CurrentSession._meta.db_table = \
-            Tableversion.objects.get_current_table_name(
-                    CurrentSession._meta.db_table)
+        self.__class__._meta.db_table = CURRENT_TABLE_NAME
+
+CurrentSession._meta.db_table = CURRENT_TABLE_NAME
 
 
 def force_create_table(model, verbosity=0):
@@ -92,12 +88,8 @@ def on_post_syncdb(app, created_models, verbosity=2, **kwargs):
     if app.__name__ != __name__:
         return
     # Tableversions table is now created.
-    PrevSession._meta.db_table = \
-            Tableversion.objects.get_previous_table_name(
-                    PrevSession._meta.db_table)
-    CurrentSession._meta.db_table = \
-            Tableversion.objects.get_current_table_name(
-                    CurrentSession._meta.db_table)
+    PrevSession._meta.db_table = PREVIOUS_TABLE_NAME
+    CurrentSession._meta.db_table = CURRENT_TABLE_NAME
     force_create_table(PrevSession, verbosity=verbosity)
     force_create_table(CurrentSession, verbosity=verbosity)
 signals.post_syncdb.connect(on_post_syncdb)
