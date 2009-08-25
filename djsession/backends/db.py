@@ -93,7 +93,7 @@ class SessionStore(SessionBase):
         self.previous = SessionDB(self.session_key, model=PrevSession,
                                   create_if_missing=False)
 
-    def _sync_with_other_session(self, session):
+    def _sync_with_other_session(self, other):
         self.session_key = other.session_key
         self.modified = other.modified
         self.accessed = other.accessed
