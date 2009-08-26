@@ -2,7 +2,7 @@
 django-sessionstore - Django Cache+DB Session wich uses table rotation for expiry
 ============================================================================
 
-:Version: 0.0.1
+:Version: 0.0.2
 
 Introduction
 ============
