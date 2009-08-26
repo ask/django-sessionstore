@@ -1,6 +1,6 @@
 from datetime import datetime
 from djsession.models import CurrentSession, PrevSession
-from django.contrib.sessions.backends.base import CreateError
+from django.contrib.sessions.backends.base import CreateError, SessionBase
 from django.contrib.sessions.backends.db import SessionStore as DBStore
 
 from django.core.exceptions import SuspiciousOperation
@@ -11,27 +11,39 @@ from django.utils.encoding import force_unicode
 class SessionStore(DBStore):
     """Get/save sessions from the database."""
 
-    model = CurrentSession
+    current = CurrentSession
+    previous = PrevSession
 
-    def __init__(self, session_key=None, model=None, create_if_missing=True):
-        self.model = model or self.model
-        self.DoesNotExist = self.model.DoesNotExist
+    def __init__(self, session_key=None, current=None, previous=None,
+                                                    create_if_missing=True):
+        self.current = current or self.current
+        self.previous = previous or self.previous
+        self.DoesNotExist = self.current.DoesNotExist
         self.create_if_missing = create_if_missing
         super(SessionStore, self).__init__(session_key=session_key)
 
-    def load(self):
+    def _get_db_session(self):
         try:
-            s = self.model.objects.get(session_key=self.session_key)
-            return self.decode(force_unicode(s.session_data))
-        except (self.DoesNotExist, SuspiciousOperation):
+            s = self.current.objects.get(session_key=self.session_key)
+            return s
+        except (CurrentSession.DoesNotExist, SuspiciousOperation):
+            pass
+        try:
+            s = self.previous.objects.get(session_key=self.session_key)
+            return s
+        except (PrevSession.DoesNotExist, SuspiciousOperation):
+            return None
+
+    def load(self):
+        session = self._get_db_session()
+        if session is None:
             if self.create_if_missing:
                 self.create()
             return {}
+        return self.decode(force_unicode(session.session_data))
 
     def exists(self, session_key):
-        try:
-            self.model.objects.get(session_key=session_key)
-        except self.model.DoesNotExist:
+        if self._get_db_session() is None:
             return False
         return True
 
@@ -45,7 +57,7 @@ class SessionStore(DBStore):
 
     def _save(self, session_data, must_create=False):
         session_data = self.encode(session_data)
-        obj = self.model(session_key=self.session_key,
+        obj = self.current(session_key=self.session_key,
                          session_data=session_data,
                          expire_date=self.get_expiry_date())
         sid = transaction.savepoint()
@@ -58,12 +70,6 @@ class SessionStore(DBStore):
             raise
 
     def delete(self, session_key=None):
-        if session_key is None:
-            if self._session_key is None:
-                return
-            session_key = self._session_key
-        try:
-            self.model.objects.get(session_key=self.session_key).delete()
-        except self.DoesNotExist:
-            pass
-
+        session = self._get_db_session()
+        if session is not None:
+            session.delete()
