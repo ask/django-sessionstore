@@ -43,7 +43,6 @@ class DJsessionTestCase(TestCase):
         to the current table properly."""
 
         settings.DEBUG = True
-        from django import db
 
         # save a session in the previous table
         session = SessionStore(
