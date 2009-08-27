@@ -1,13 +1,22 @@
-============================================================================
+=================================================================================
 django-sessionstore - Django Cache+DB Session wich uses table rotation for expiry
-============================================================================
+=================================================================================
 
 :Version: 0.0.2
 
 Introduction
 ============
 
-.. Please write an introduction to your package here.
+This package provide an alternative way to handle sessions with the Django framework.
+
+If you decide to store data in the session for unlogged users, you session table
+could become quickly big (several gigabytes). Deleting sessions with the script
+provided by Django is not possible anymore (too slow, create lock issue with InnoDB).
+
+This solution provided here is to duplicate the session table and migrate the used
+sessions from the old table to the new one when the user try to access them.
+
+After a choosen time. Repeat the operation and finaly delete the old table.
 
 Installation
 ============
@@ -31,7 +40,3 @@ by doing the following,::
     $ python setup.py build
     # python setup.py install # as root
 
-Examples
-========
-
-.. Please write some examples using your package here.
