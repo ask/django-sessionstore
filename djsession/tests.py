@@ -8,6 +8,7 @@ from django.conf import settings
 from django import db
 from djsession.backends.db import SessionStore
 from djsession.models import CurrentSession, PrevSession
+from djsession.models import Tableversion, get_sesssion_table_name
 
 class DJsessionTestCase(TestCase):
 
@@ -19,7 +20,7 @@ class DJsessionTestCase(TestCase):
         django1 = db.connection.queries[0]
         self.assertTrue('django_session_1' in django1['sql'])
         django0 = db.connection.queries[1]
-        self.assertTrue('django_session_0' in django0['sql'])
+        self.assertTrue('django_session' in django0['sql'])
         db.reset_queries()
         
         session['toto'] = 'toto'
@@ -67,3 +68,22 @@ class DJsessionTestCase(TestCase):
         
         
         settings.DEBUG = False
+
+    def test_03_table_name(self):
+        """Test that the table name is properly set up."""
+
+        self.assertEqual(get_sesssion_table_name(),
+            ('django_session', 'django_session_1'))
+
+        Tableversion(current_version=2).save()
+
+        self.assertEqual(get_sesssion_table_name(),
+            ('django_session_1', 'django_session_2'))
+
+        Tableversion(current_version=3).save()
+
+        self.assertEqual(get_sesssion_table_name(),
+            ('django_session_2', 'django_session_3'))
+        
+        settings.DEBUG = False
+

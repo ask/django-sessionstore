@@ -25,20 +25,33 @@ def version_table_created():
         return True
     return False
 
-if version_table_created():
-    try:
-        # try to get the latest version number
-        current_version = Tableversion.objects.order_by('-current_version')[0]
-    except IndexError:
+def get_sesssion_table_name():
+    if version_table_created():
+        try:
+            # try to get the latest version number
+            current_version = Tableversion.objects.order_by(
+                    '-current_version'
+                )[0].current_version
+        except IndexError:
+            current_version = 1
+    else:
         current_version = 1
-else:
-    current_version = 1
+    previous_version = int(current_version -1)
 
-PREVIOUS_TABLE_NAME="django_session_%d" % int(current_version -1)
-CURRENT_TABLE_NAME="django_session_%d" % current_version
+    # boot up the table name with the default table name for the sessions
+    # this will facilite a migration from the old session backend to this one.
+    if previous_version == 0:
+        previous_table_name="django_session"
+    else:
+        previous_table_name="django_session_%d" % int(current_version -1)
+    current_table_name="django_session_%d" % current_version
+    return previous_table_name, current_table_name
+
+# set up session table name
+PREVIOUS_TABLE_NAME, CURRENT_TABLE_NAME = get_sesssion_table_name()
 
 class Session(models.Model):
-    """Replication of the session Model"""
+    """Replication of the session Model."""
     session_key = models.CharField(_('session key'), max_length=40,
                                    primary_key=True)
     session_data = models.TextField(_('session data'))
