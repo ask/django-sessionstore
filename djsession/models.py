@@ -7,9 +7,18 @@ from django.core.management.color import no_style
 from django.db import connection
 
 class Tableversion(models.Model):
+    """
+    This model is used to keep the state of the table rotation revisions.
+    The greatest current_version is the official used table.
+    """
     current_version = models.IntegerField(_(u"version"), default=1)
+    latest_rotation = models.DateTimeField(_(u"latest rotation"),
+        auto_now_add=True)
 
+    objects = TableversionManager()
+    
     class Meta:
+        get_latest_by = ('current_version')
         verbose_name = _("table version")
         verbose_name_plural = _(u"table versions")
 
@@ -25,14 +34,12 @@ def version_table_created():
         return True
     return False
 
-def get_sesssion_table_name():
+def get_session_table_name():
     if version_table_created():
         try:
             # try to get the latest version number
-            current_version = Tableversion.objects.order_by(
-                    '-current_version'
-                )[0].current_version
-        except IndexError:
+            current_version = Tableversion.objects.latest().current_version
+        except Tableversion.DoesNotExist:
             current_version = 1
     else:
         current_version = 1
@@ -48,7 +55,7 @@ def get_sesssion_table_name():
     return previous_table_name, current_table_name
 
 # set up session table name
-PREVIOUS_TABLE_NAME, CURRENT_TABLE_NAME = get_sesssion_table_name()
+PREVIOUS_TABLE_NAME, CURRENT_TABLE_NAME = get_session_table_name()
 
 class Session(models.Model):
     """Replication of the session Model."""

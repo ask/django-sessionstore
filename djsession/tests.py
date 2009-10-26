@@ -2,13 +2,15 @@
 """Django session table rotation tests."""
 import django
 import re
+import datetime
 from django.test import TestCase
 from django.test.client import Client
 from django.conf import settings
 from django import db
 from djsession.backends.db import SessionStore
 from djsession.models import CurrentSession, PrevSession
-from djsession.models import Tableversion, get_sesssion_table_name
+from djsession.models import Tableversion, get_session_table_name
+from djsession.settings import DJSESSION_EXPIRE_DAYS
 
 class DJsessionTestCase(TestCase):
 
@@ -65,25 +67,47 @@ class DJsessionTestCase(TestCase):
         session = SessionStore(session_key=session_key)
         self.assertEqual(session['tata'], 'tata')
         self.assertEqual(len(db.connection.queries), 1)
-        
-        
+
         settings.DEBUG = False
 
     def test_03_table_name(self):
         """Test that the table name is properly set up."""
 
-        self.assertEqual(get_sesssion_table_name(),
+        self.assertEqual(get_session_table_name(),
             ('django_session', 'django_session_1'))
 
         Tableversion(current_version=2).save()
 
-        self.assertEqual(get_sesssion_table_name(),
+        self.assertEqual(get_session_table_name(),
             ('django_session_1', 'django_session_2'))
 
         Tableversion(current_version=3).save()
 
-        self.assertEqual(get_sesssion_table_name(),
+        self.assertEqual(get_session_table_name(),
             ('django_session_2', 'django_session_3'))
         
         settings.DEBUG = False
 
+
+    def test_04_rotate_table(self):
+        """Test that the rotation functions works."""
+        self.assertEqual(get_session_table_name(),
+            ('django_session', 'django_session_1'))
+
+        self.assertEqual(Tableversion.objects.rotate_table().current_version, 1)
+        self.assertEqual(Tableversion.objects.rotate_table().current_version, 1)
+
+        self.assertEqual(get_session_table_name(),
+            ('django_session', 'django_session_1'))
+
+        delta = datetime.timedelta(days=DJSESSION_EXPIRE_DAYS + 1)
+
+        lastest = Tableversion.objects.latest()
+        lastest.latest_rotation = datetime.datetime.now() - delta
+        lastest.save()
+
+        self.assertEqual(Tableversion.objects.rotate_table().current_version, 2)
+        self.assertEqual(Tableversion.objects.rotate_table().current_version, 2)
+
+        self.assertEqual(get_session_table_name(),
+            ('django_session_1', 'django_session_2'))
